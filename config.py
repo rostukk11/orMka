@@ -30,10 +30,20 @@ class Config:
     scan_interval: int = field(default_factory=lambda: int(os.getenv("SCAN_INTERVAL", "60")))
     alert_cooldown: int = field(default_factory=lambda: int(os.getenv("ALERT_COOLDOWN", "900")))
 
+    # Тип ринку на CEX: "swap" (ф'ючерси/безстрокові) або "spot"
+    market_type: str = field(default_factory=lambda: os.getenv("MARKET_TYPE", "swap").lower())
+
+    # Мінімальна ліквідність/обсяг DEX-пари, щоб не ловити сміття (USD), 0 = вимкнено
+    min_dex_liquidity: float = field(default_factory=lambda: float(os.getenv("MIN_DEX_LIQUIDITY", "10000")))
+
+    # Оцінка успішності сигналу: за скільки секунд закривати сигнал
+    signal_ttl: int = field(default_factory=lambda: int(os.getenv("SIGNAL_TTL", "1800")))
+    # Сигнал = успішний, якщо різниця стиснулась нижче цієї частки від стартової
+    success_convergence: float = field(default_factory=lambda: float(os.getenv("SUCCESS_CONVERGENCE", "0.5")))
+
     cex_exchanges: list[str] = field(
         default_factory=lambda: _split(os.getenv("CEX_EXCHANGES", "binance,bybit,okx,kucoin,gate,mexc"))
     )
-    enable_dex: bool = field(default_factory=lambda: _bool(os.getenv("ENABLE_DEX"), True))
 
     tokens: list[str] = field(default_factory=lambda: _split(os.getenv("TOKENS", "")))
 

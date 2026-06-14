@@ -1,11 +1,11 @@
-"""Telegram-бот для моніторингу спредів між біржами (CEX + DEX).
+"""Telegram-бот для моніторингу спредів DEX ↔ CEX.
 
 Команди:
-  /start            — підписатися на авто-алерти
+  /start            — підписатися на авто-сигнали
   /stop             — відписатися
-  /spread [TOKEN]   — спред конкретного токена (або топ зараз)
-  /top              — топ спредів зараз
-  /threshold N      — змінити поріг алерта (%)
+  /signal [TOKEN]   — сигнал по токену (або топ зараз)
+  /top              — топ сигналів зараз
+  /threshold N      — змінити поріг різниці (%)
   /status           — поточні налаштування й біржі
   /help             — довідка
 """
@@ -22,7 +22,7 @@ from aiogram.types import Message
 
 import storage
 from config import config
-from formatting import format_alert, format_list, format_spread
+from formatting import format_list, format_signal
 from scanner import Scanner
 
 logging.basicConfig(
@@ -34,7 +34,6 @@ log = logging.getLogger("spread-bot")
 dp = Dispatcher()
 scanner = Scanner()
 
-# Анти-спам: token -> час останнього алерта
 _last_alert: dict[str, float] = {}
 
 
@@ -44,26 +43,24 @@ def _threshold() -> float:
 
 HELP = (
     "🤖 <b>Spread Scanner Bot</b>\n\n"
-    "Слідкую за спредами одного токена між біржами (CEX + DEX) і шлю сигнал, "
-    "коли різниця перевищує поріг.\n\n"
+    "Слідкую за різницею ціни токена між <b>DEX</b> і <b>CEX</b> ({market}) "
+    "і шлю сигнал LONG/SHORT, коли різниця перевищує поріг.\n\n"
     "<b>Команди:</b>\n"
-    "/start — підписатися на авто-алерти\n"
+    "/start — підписатися на авто-сигнали\n"
     "/stop — відписатися\n"
-    "/top — топ спредів зараз\n"
-    "/spread BTC — спред по конкретному токену\n"
-    "/threshold 2 — поріг алерта = 2%\n"
+    "/top — топ сигналів зараз\n"
+    "/signal LAB — сигнал по конкретному токену\n"
+    "/threshold 5 — поріг різниці = 5%\n"
     "/status — налаштування й список бірж\n"
-    "/help — ця довідка\n\n"
-    "У сигналі: де купити (min ask) і де продати (max bid), %, "
-    "та чи можливий вивід з біржі купівлі (✅/⛔/❔) і ввід на біржу продажу."
-)
+    "/help — ця довідка"
+).format(market="Futures" if config.market_type == "swap" else "Spot")
 
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     is_new = storage.add_subscriber(message.chat.id)
     note = "Підписку оформлено ✅" if is_new else "Ти вже підписаний ✅"
-    await message.answer(f"{note}\nПоріг алерта: <b>{_threshold():.2f}%</b>\n\n{HELP}")
+    await message.answer(f"{note}\nПоріг різниці: <b>{_threshold():.2f}%</b>\n\n{HELP}")
 
 
 @dp.message(Command("stop"))
@@ -83,8 +80,9 @@ async def cmd_status(message: Message) -> None:
     venues = scanner.venues
     text = (
         f"⚙️ <b>Налаштування</b>\n"
-        f"Поріг алерта: <b>{_threshold():.2f}%</b>\n"
+        f"Поріг різниці: <b>{_threshold():.2f}%</b>\n"
         f"Інтервал сканування: {config.scan_interval} с\n"
+        f"Ринок CEX: {scanner.cex.market_label}\n"
         f"Котирувальна валюта: {config.quote}\n"
         f"Підписників: {len(storage.get_subscribers())}\n\n"
         f"<b>Біржі ({len(venues)}):</b> {html.quote(', '.join(venues))}\n"
@@ -96,42 +94,42 @@ async def cmd_status(message: Message) -> None:
 @dp.message(Command("threshold"))
 async def cmd_threshold(message: Message, command: CommandObject) -> None:
     if not command.args:
-        await message.answer(f"Поточний поріг: <b>{_threshold():.2f}%</b>\nЗмінити: /threshold 2")
+        await message.answer(f"Поточний поріг: <b>{_threshold():.2f}%</b>\nЗмінити: /threshold 5")
         return
     try:
         value = float(command.args.replace(",", ".").strip())
     except ValueError:
-        await message.answer("Не зрозумів число. Приклад: /threshold 1.5")
+        await message.answer("Не зрозумів число. Приклад: /threshold 5")
         return
     if value <= 0:
         await message.answer("Поріг має бути більше 0.")
         return
     storage.set_setting("min_spread", value)
-    await message.answer(f"Готово. Новий поріг алерта: <b>{value:.2f}%</b>")
+    await message.answer(f"Готово. Новий поріг різниці: <b>{value:.2f}%</b>")
 
 
 @dp.message(Command("top"))
 async def cmd_top(message: Message) -> None:
     await message.answer("Сканую біржі… ⏳")
-    results = await scanner.scan()
-    results = [r for r in results if r.spread_pct >= _threshold()]
-    await message.answer(format_list(results))
+    signals = await scanner.scan()
+    signals = [s for s in signals if s.diff_pct >= _threshold()]
+    await message.answer(format_list(signals))
 
 
-@dp.message(Command("spread"))
-async def cmd_spread(message: Message, command: CommandObject) -> None:
+@dp.message(Command(commands=["signal", "spread"]))
+async def cmd_signal(message: Message, command: CommandObject) -> None:
     if not command.args:
         await cmd_top(message)
         return
     token = command.args.strip().upper().split("/")[0]
     await message.answer(f"Дивлюсь {html.quote(token)}… ⏳")
-    results = await scanner.scan([token])
-    if not results:
+    signals = await scanner.scan([token])
+    if not signals:
         await message.answer(
-            f"Для <b>{html.quote(token)}/{config.quote}</b> не знайшов ціни щонайменше на 2 біржах."
+            f"Для <b>{html.quote(token)}</b> не знайшов пару DEX+{config.quote} разом із CEX."
         )
         return
-    await message.answer(format_spread(results[0]))
+    await message.answer(format_signal(signals[0]))
 
 
 async def _broadcast(bot: Bot, text: str) -> None:
@@ -149,25 +147,28 @@ async def _broadcast(bot: Bot, text: str) -> None:
 
 
 async def alert_loop(bot: Bot) -> None:
-    """Фонове сканування + розсилка алертів за порогом (з анти-спамом)."""
+    """Фонове сканування + розсилка сигналів за порогом (з анти-спамом)."""
     await asyncio.sleep(5)
     while True:
         try:
             threshold = _threshold()
-            results = await scanner.scan()
+            signals = await scanner.scan()
             now = asyncio.get_event_loop().time()
-            fresh: list = []
-            for r in results:
-                if r.spread_pct < threshold:
+            fresh = []
+            for s in signals:
+                if s.diff_pct < threshold:
                     continue
-                last = _last_alert.get(r.token, 0)
+                last = _last_alert.get(s.token, 0)
                 if now - last < config.alert_cooldown:
                     continue
-                _last_alert[r.token] = now
-                fresh.append(r)
+                _last_alert[s.token] = now
+                storage.record_signal(s.token)
+                scanner.open_signal(s)
+                fresh.append(s)
             if fresh:
-                log.info("Алерт: %d токенів понад %.2f%%", len(fresh), threshold)
-                await _broadcast(bot, format_alert(fresh[:15]))
+                log.info("Сигнали: %d токенів понад %.2f%%", len(fresh), threshold)
+                for s in fresh[:15]:
+                    await _broadcast(bot, format_signal(s))
         except Exception as exc:  # noqa: BLE001
             log.exception("Помилка у циклі сканування: %s", exc)
         await asyncio.sleep(config.scan_interval)
@@ -175,10 +176,7 @@ async def alert_loop(bot: Bot) -> None:
 
 async def main() -> None:
     config.validate()
-    bot = Bot(
-        token=config.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     log.info("Біржі: %s", ", ".join(scanner.venues))
     task = asyncio.create_task(alert_loop(bot))
     try:

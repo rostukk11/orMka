@@ -1,7 +1,8 @@
 """Форматування повідомлень для Telegram (HTML)."""
 from __future__ import annotations
 
-from scanner import SpreadResult
+from config import config
+from scanner import Signal
 
 
 def _flag(status: bool | None) -> str:
@@ -9,40 +10,55 @@ def _flag(status: bool | None) -> str:
         return "✅"
     if status is False:
         return "⛔"
-    return "❔"  # невідомо (біржа не дала даних)
+    return "❔"
 
 
-def _fmt_price(p: float) -> str:
-    if p >= 1:
-        return f"{p:,.4f}".rstrip("0").rstrip(".")
-    return f"{p:.8f}".rstrip("0").rstrip(".")
+def _money(value: float) -> str:
+    """1234567.8 -> '1 234 568' (пробіли між тисячами)."""
+    return f"{int(round(value)):,}".replace(",", " ")
 
 
-def _venue(name: str) -> str:
-    return name.replace("DEX:", "🟣 ").upper() if name.startswith("DEX:") else name
+def _price(value: float) -> str:
+    return f"{value:.8f}"
 
 
-def format_spread(r: SpreadResult) -> str:
-    transfer = "🔁 переказ можливий" if r.transferable else "⚠️ переказ під питанням"
+def format_signal(s: Signal) -> str:
+    bullet = "🟢" if s.direction == "LONG" else "🔴"
+    quote = config.quote
+
+    # два рядки цін, дорожчий зверху
+    dex_line = f"🔹 DEX: {_price(s.dex.price)} {quote}"
+    cex_line = f"🔹 {s.cex_name.capitalize()}: {_price(s.cex_price)} {quote}"
+    if s.cex_price > s.dex.price:
+        prices = f"{cex_line}\n{dex_line}"
+    else:
+        prices = f"{dex_line}\n{cex_line}"
+
+    st = s.stats
     return (
-        f"<b>{r.token}/USDT</b>  спред <b>{r.spread_pct:.2f}%</b>\n"
-        f"🟢 Купити: <b>{_venue(r.buy_ex)}</b> @ {_fmt_price(r.buy_price)}  "
-        f"(вивід {_flag(r.buy_withdraw)})\n"
-        f"🔴 Продати: <b>{_venue(r.sell_ex)}</b> @ {_fmt_price(r.sell_price)}  "
-        f"(ввід {_flag(r.sell_deposit)})\n"
-        f"{transfer} · бірж із ціною: {r.venues}"
+        f"📈 <b>Сигнал {s.direction} для {s.token}</b>\n\n"
+        f"{prices}\n\n"
+        f"{bullet} <b>Разница: {s.diff_pct:.2f}%</b>\n\n"
+        f"<b>{s.cex_name.capitalize()} {s.cex_market}:</b>\n"
+        f"🔹 Объём (24ч): {_money(s.cex_volume)} {quote}\n"
+        f"🔹 Депозит: {_flag(s.cex_deposit)}\n"
+        f"🔹 Вывод: {_flag(s.cex_withdraw)}\n\n"
+        f"<b>DEX:</b>\n"
+        f"🔹 Объём: {_money(s.dex.volume_h24)} {quote}\n"
+        f"🔹 Ликвидность: {_money(s.dex.liquidity_usd)} {quote}\n"
+        f"🔹 Сеть: {s.dex.chain}\n"
+        f"🔹 Контракт: <code>{s.dex.address}</code>\n\n"
+        f"<b>{s.token}</b>\n"
+        f"🔹 Сигналов за день: {st.get('signals', 0)}\n"
+        f"✅ Успешных сигналов: {st.get('success', 0)} ❌ Неудачных: {st.get('fail', 0)}"
     )
 
 
-def format_alert(results: list[SpreadResult]) -> str:
-    head = f"🚨 <b>Знайдено спреди</b> ({len(results)}):\n\n"
-    return head + "\n\n".join(format_spread(r) for r in results)
+def format_alert(signals: list[Signal]) -> str:
+    return "\n\n➖➖➖➖➖\n\n".join(format_signal(s) for s in signals)
 
 
-def format_list(results: list[SpreadResult], limit: int = 15) -> str:
-    if not results:
-        return "Нічого не знайшов 🤷 — спредів вище порогу зараз немає."
-    shown = results[:limit]
-    body = "\n\n".join(format_spread(r) for r in shown)
-    tail = f"\n\n…і ще {len(results) - limit}" if len(results) > limit else ""
-    return f"📊 <b>Топ спредів</b> ({len(results)}):\n\n{body}{tail}"
+def format_list(signals: list[Signal], limit: int = 10) -> str:
+    if not signals:
+        return "Нічого не знайшов 🤷 — сигналів вище порогу зараз немає."
+    return format_alert(signals[:limit])
