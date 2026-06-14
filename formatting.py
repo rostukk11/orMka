@@ -1,7 +1,10 @@
 """Форматування повідомлень для Telegram (HTML)."""
 from __future__ import annotations
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from config import config
+from links import cex_button_label, cex_url, dex_button_label
 from scanner import Signal
 
 
@@ -54,11 +57,31 @@ def format_signal(s: Signal) -> str:
     )
 
 
-def format_alert(signals: list[Signal]) -> str:
-    return "\n\n➖➖➖➖➖\n\n".join(format_signal(s) for s in signals)
+def build_keyboard(s: Signal) -> InlineKeyboardMarkup | None:
+    """Кнопки під сигналом: DexScreener + CEX (Futures/Spot)."""
+    rows: list[list[InlineKeyboardButton]] = []
+
+    market_type = "swap" if s.cex_market.lower() == "futures" else "spot"
+    cex_link = cex_url(s.cex_name, s.token, config.quote, market_type)
+    if cex_link:
+        rows.append([InlineKeyboardButton(
+            text=cex_button_label(s.cex_name, s.token, config.quote, market_type),
+            url=cex_link,
+        )])
+
+    if s.dex.pair_url:
+        rows.append([InlineKeyboardButton(
+            text=dex_button_label(s.dex.dex_id, s.dex.chain),
+            url=s.dex.pair_url,
+        )])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
 def format_list(signals: list[Signal], limit: int = 10) -> str:
     if not signals:
         return "Нічого не знайшов 🤷 — сигналів вище порогу зараз немає."
-    return format_alert(signals[:limit])
+    head = signals[:limit]
+    body = "\n\n➖➖➖➖➖\n\n".join(format_signal(s) for s in head)
+    tail = f"\n\n…і ще {len(signals) - limit}" if len(signals) > limit else ""
+    return body + tail

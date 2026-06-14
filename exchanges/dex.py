@@ -21,6 +21,8 @@ class DexInfo:
     chain: str            # мережа (bsc, ethereum, solana, ...)
     dex_id: str           # назва DEX (uniswap, pancakeswap, raydium, ...)
     address: str          # адреса контракту токена
+    pair_address: str = ""  # адреса пулу/пари на DEX
+    pair_url: str = ""      # пряме посилання на сторінку пари у DexScreener
 
 
 class DexConnector:
@@ -68,13 +70,20 @@ class DexConnector:
             if liquidity <= best_liq:
                 continue
             best_liq = liquidity
+            pair_addr = pair.get("pairAddress", "")
+            chain = pair.get("chainId", "?")
+            url = pair.get("url") or (
+                f"https://dexscreener.com/{chain}/{pair_addr}" if pair_addr else ""
+            )
             best = DexInfo(
                 price=float(price),
                 volume_h24=float((pair.get("volume") or {}).get("h24") or 0),
                 liquidity_usd=liquidity,
-                chain=pair.get("chainId", "?"),
+                chain=chain,
                 dex_id=pair.get("dexId", "dex"),
                 address=(pair.get("baseToken") or {}).get("address", ""),
+                pair_address=pair_addr,
+                pair_url=url,
             )
 
         result[token] = best

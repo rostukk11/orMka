@@ -27,6 +27,9 @@ DEX:
 LAB
 🔹 Сигналов за день: 394
 ✅ Успешных сигналов: 15 ❌ Неудачных: 12
+
+[📈 Gate Futures: LAB/USDT]   ← кнопка-посилання на біржу
+[📊 DexScreener: pancakeswap @ bsc]   ← кнопка на DEX-пару
 ```
 
 ## Як працює
@@ -93,8 +96,9 @@ python bot.py
 bot.py            точка входу: aiogram, команди, цикл сигналів
 scanner.py        DEX↔CEX порівняння + оцінка успішності
 exchanges/cex.py  CEX через ccxt (ціна, обсяг, ввід/вивід)
-exchanges/dex.py  DEX через DexScreener (ціна, обсяг, ліквідність, контракт)
-formatting.py     формат повідомлення-сигналу
+exchanges/dex.py  DEX через DexScreener (ціна, обсяг, ліквідність, контракт, URL)
+formatting.py     формат повідомлення-сигналу + inline-кнопки
+links.py          URL до пари токена на CEX (futures/spot)
 storage.py        підписники, налаштування, статистика
 config.py         конфіг з .env
 ```

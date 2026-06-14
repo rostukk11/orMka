@@ -22,7 +22,7 @@ from aiogram.types import Message
 
 import storage
 from config import config
-from formatting import format_list, format_signal
+from formatting import build_keyboard, format_signal
 from scanner import Scanner
 
 logging.basicConfig(
@@ -108,12 +108,29 @@ async def cmd_threshold(message: Message, command: CommandObject) -> None:
     await message.answer(f"Готово. Новий поріг різниці: <b>{value:.2f}%</b>")
 
 
+async def _send_signal(target, signal) -> None:
+    """target — це Message.answer-сумісний об'єкт або (bot, chat_id)."""
+    text = format_signal(signal)
+    keyboard = build_keyboard(signal)
+    if callable(getattr(target, "answer", None)):
+        await target.answer(text, reply_markup=keyboard, disable_web_page_preview=True)
+    else:
+        bot, chat_id = target
+        await bot.send_message(chat_id, text, reply_markup=keyboard, disable_web_page_preview=True)
+
+
 @dp.message(Command("top"))
 async def cmd_top(message: Message) -> None:
     await message.answer("Сканую біржі… ⏳")
     signals = await scanner.scan()
     signals = [s for s in signals if s.diff_pct >= _threshold()]
-    await message.answer(format_list(signals))
+    if not signals:
+        await message.answer("Нічого не знайшов 🤷 — сигналів вище порогу зараз немає.")
+        return
+    for s in signals[:10]:
+        await _send_signal(message, s)
+    if len(signals) > 10:
+        await message.answer(f"…і ще {len(signals) - 10}")
 
 
 @dp.message(Command(commands=["signal", "spread"]))
@@ -129,10 +146,10 @@ async def cmd_signal(message: Message, command: CommandObject) -> None:
             f"Для <b>{html.quote(token)}</b> не знайшов пару DEX+{config.quote} разом із CEX."
         )
         return
-    await message.answer(format_signal(signals[0]))
+    await _send_signal(message, signals[0])
 
 
-async def _broadcast(bot: Bot, text: str) -> None:
+async def _broadcast_signal(bot: Bot, signal) -> None:
     targets = set(storage.get_subscribers())
     if config.default_chat_id:
         try:
@@ -141,7 +158,7 @@ async def _broadcast(bot: Bot, text: str) -> None:
             pass
     for chat_id in targets:
         try:
-            await bot.send_message(chat_id, text, disable_web_page_preview=True)
+            await _send_signal((bot, chat_id), signal)
         except Exception as exc:  # noqa: BLE001
             log.warning("Не зміг надіслати %s: %s", chat_id, exc)
 
@@ -168,7 +185,7 @@ async def alert_loop(bot: Bot) -> None:
             if fresh:
                 log.info("Сигнали: %d токенів понад %.2f%%", len(fresh), threshold)
                 for s in fresh[:15]:
-                    await _broadcast(bot, format_signal(s))
+                    await _broadcast_signal(bot, s)
         except Exception as exc:  # noqa: BLE001
             log.exception("Помилка у циклі сканування: %s", exc)
         await asyncio.sleep(config.scan_interval)
