@@ -54,11 +54,43 @@ LAB
 
 ## Встановлення
 
+### Швидкий старт (локально)
 ```bash
 pip install -r requirements.txt
 cp .env.example .env          # встав TELEGRAM_BOT_TOKEN від @BotFather
 python bot.py
 ```
+
+### Docker (рекомендовано для серверів)
+```bash
+cp .env.example .env          # встав TELEGRAM_BOT_TOKEN
+docker compose up -d --build
+docker compose logs -f bot    # подивитись логи
+```
+
+### Однокомандний скрипт
+```bash
+cp .env.example .env          # встав TELEGRAM_BOT_TOKEN
+./deploy.sh                   # сам обере Docker або venv
+```
+
+### VPS + systemd (бот сам перезапускається після ребуту)
+```bash
+sudo useradd -r -m -d /opt/spread-bot botuser
+sudo -u botuser git clone <repo> /opt/spread-bot
+cd /opt/spread-bot && sudo -u botuser python3 -m venv .venv
+sudo -u botuser .venv/bin/pip install -r requirements.txt
+sudo -u botuser cp .env.example .env && sudo -u botuser nano .env   # встав токен
+sudo cp spread-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now spread-bot
+sudo journalctl -u spread-bot -f
+```
+
+### Безкоштовний хостинг (Railway)
+1. Залогінься на https://railway.app через GitHub.
+2. `New Project` → `Deploy from GitHub repo` → вибери цей репозиторій і гілку.
+3. У вкладці **Variables** додай `TELEGRAM_BOT_TOKEN` (інші змінні з `.env.example` за бажанням).
+4. Railway сам помітить `Dockerfile` і збере контейнер. Бот стартує автоматично.
 
 ## Команди
 

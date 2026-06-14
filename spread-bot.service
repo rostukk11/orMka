@@ -1,0 +1,24 @@
+[Unit]
+Description=Spread Scanner Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/spread-bot
+EnvironmentFile=/opt/spread-bot/.env
+ExecStart=/opt/spread-bot/.venv/bin/python -u /opt/spread-bot/bot.py
+Restart=always
+RestartSec=10
+User=botuser
+Group=botuser
+
+# трохи захисту
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/spread-bot/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
