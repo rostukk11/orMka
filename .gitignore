@@ -6,3 +6,4 @@ venv/
 data/state.json
 *.log
 .DS_Store
+*.db
