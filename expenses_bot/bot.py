@@ -5,6 +5,7 @@ import asyncio
 import csv
 import io
 import logging
+import sys
 import time
 
 from aiogram import Bot, Dispatcher, F
@@ -418,10 +419,15 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Windows-консоль інколи не вміє UTF-8 — не даємо їй впасти на кирилиці
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     try:
         config.validate()
     except RuntimeError as error:
-        raise SystemExit(f"❌ {error}")
+        raise SystemExit(f"ПОМИЛКА: {error}")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
